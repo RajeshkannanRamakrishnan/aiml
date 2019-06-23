@@ -9,6 +9,7 @@ import io
 import json
 import sys
 import os
+import signal
 
 import aiml
 
@@ -62,7 +63,7 @@ class S(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
         except:
-            print sys.exc_info()
+            print (sys.exc_info())
             self.send_response(400)
             self.end_headers()
 
@@ -129,21 +130,47 @@ class S(BaseHTTPRequestHandler):
                 self.end_headers()
 
 
+httpd = None
+running = True
+def exit_gracefully(ignore1, ignore2):
+    global httpd
+    global running
+    print 'Shutting down...'
+    running=False
+    if httpd:
+        httpd.socket.close()
+
+signal.signal(signal.SIGTERM, exit_gracefully)
+
+
 #       outcome/
 # Start the HTTP server and handle keyboard interrupt
 # as a shutdown
-def run(server_class=HTTPServer, handler_class=S, port=8765):
+def run(server_class=HTTPServer, handler_class=S):
     try:
+        global httpd
+        global running
+        port = os.environ["EBRAIN_AIML_PORT"]
+        if(port):
+            try:
+                port = int(port)
+            except ValueError:
+                print "Failed to understand EBRAIN_AIML_PORT"
+                sys.exit(1)
+        else:
+            print "Failed to find EBRAIN_AIML_PORT"
+            sys.exit(1)
         num = os.environ["ELIFE_NODE_NUM"]
         if(num):
             port = port + int(num)*100
         server_address = ('', port)
         httpd = server_class(server_address, handler_class)
         print 'Starting httpd...(localhost:%s)' % port
-        httpd.serve_forever()
+        while running:
+            httpd.handle_request()
     except KeyboardInterrupt:
-        print 'Shutting down...'
-        httpd.socket.close()
+        exit_gracefully(1,2)
+
 
 
 if __name__ == "__main__":
